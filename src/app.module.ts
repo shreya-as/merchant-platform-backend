@@ -1,21 +1,23 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
-import { ConfigService } from '@nestjs/config';
 import { configuration, AppConfig } from './config/configuration';
 import { dataSourceOptions, envFilePath } from './database/data-source';
-console.log(envFilePath,"envFilePath")
+import { AuthModule } from './modules/auth/auth.module';
+import { MerchantApplicationsModule } from './modules/merchant-applications/merchant-applications.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
+
 @Module({
   imports: [
-    //Single source of truth configuration
+    // Single source of truth configuration
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
-      envFilePath
+      envFilePath,
     }),
 
-    //Reuse dataSourceOptions directly for NestJS runtime
+    // Reuse dataSourceOptions directly for NestJS runtime
     TypeOrmModule.forRoot({
       ...dataSourceOptions,
       autoLoadEntities: true,
@@ -23,7 +25,6 @@ console.log(envFilePath,"envFilePath")
 
     // Redis transport connection for BullMQ
     BullModule.forRootAsync({
-      imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService<AppConfig, true>) => {
         const redis = configService.get('redis', { infer: true });
@@ -37,6 +38,10 @@ console.log(envFilePath,"envFilePath")
         };
       },
     }),
+
+    AuthModule,
+    MerchantApplicationsModule,
+    ReviewsModule,
   ],
 })
 export class AppModule {}

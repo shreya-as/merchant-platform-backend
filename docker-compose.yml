@@ -1,1 +1,77 @@
+# Local stack: PostgreSQL + Redis + the API (BullMQ risk worker runs inside the API process).
+# Secrets have no defaults: create .env first (cp .env.compose.example .env, then fill it in).
+name: merchant-platform
 
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required, set it in .env (see .env.compose.example)}
+      POSTGRES_DB: ${DB_NAME:-merchant_platform}
+    ports:
+      - '${POSTGRES_HOST_PORT:-5433}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Creates merchant_platform_test (used by the e2e suite) on first start.
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '${REDIS_HOST_PORT:-6380}:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      API_PREFIX: api/v1
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required, set it in .env (see .env.compose.example)}
+      DB_NAME: ${DB_NAME:-merchant_platform}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required, set it in .env (see .env.compose.example)}
+      JWT_EXPIRES_IN: 1d
+      SWAGGER_ENABLED: 'true'
+      RUN_MIGRATIONS: 'true'
+      # Demo users are only seeded when explicitly enabled; the seed refuses NODE_ENV=production
+      # unless ALLOW_DEMO_SEED is also true, so both follow the same opt-in flag.
+      SEED_ON_START: ${SEED_ON_START:-false}
+      ALLOW_DEMO_SEED: ${SEED_ON_START:-false}
+      SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:-}
+      BULLMQ_RETRY_ATTEMPTS: 3
+      BULLMQ_BACKOFF_DELAY_MS: 2000
+      RISK_PASS_THRESHOLD: 70
+      RISK_SIMULATED_LATENCY_MS: 800
+      RISK_TRANSIENT_FAILURE_RATE: 0
+    ports:
+      - '${API_HOST_PORT:-3000}:3000'
+
+volumes:
+  postgres-data:
+  redis-data:

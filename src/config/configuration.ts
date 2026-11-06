@@ -1,25 +1,28 @@
 // Unified configuration for the Merchant Payments & Operations Platform.
 
-// This is the single source of truth for the entire application, loaded
-// into NestJS ConfigModule. It centralizes relational persistence (PostgreSQL/TypeORM),
-// asynchronous risk execution & worker scheduling (BullMQ/Redis), authentication
-// and crypt guardrails (JWT/Bcrypt), lifecycle risk simulation, and operational limits.
+// This is the single source of truth for the entire application
 export const configuration = () => ({
   nodeEnv: process.env.NODE_ENV || 'development',
   appName: process.env.APP_NAME || 'merchant-platform',
   port: parseInt(process.env.PORT ?? '3000', 10),
   apiPrefix: process.env.API_PREFIX || 'api/v1',
 
+  // OpenAPI / Swagger UI. Served outside the API prefix: UI at /docs, JSON spec at /docs-json.
+  swagger: {
+    enabled: process.env.SWAGGER_ENABLED !== 'false',
+    path: process.env.SWAGGER_PATH || 'docs',
+  },
+
   // Database / Relational storage (PostgreSQL via TypeORM)
   database: {
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT ?? '5432', 10),
     username: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD || 'postgrespassword',
+    // No default: credentials always come from the environment.
+    password: process.env.DB_PASSWORD,
     name: process.env.DB_NAME || 'merchant_platform',
     synchronize: process.env.DB_SYNC === 'true',
     logging: process.env.DB_LOGGING === 'true',
-    ssl: process.env.DB_SSL === 'true',
   },
 
   // Redis cache & queue transport (Used by BullMQ for background risk processing)
@@ -32,7 +35,8 @@ export const configuration = () => ({
 
   // Security & Authentication guardrails
   auth: {
-    jwtSecret: process.env.JWT_SECRET || 'merchant-platform-jwt-secret-key-change-in-prod',
+    // No fallback in any environment: requireJwtSecret() fails the boot if it is unset or weak.
+    jwtSecret: process.env.JWT_SECRET,
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1d',
     saltRounds: parseInt(process.env.BCRYPT_SALT_ROUNDS ?? '10', 10),
   },
@@ -40,7 +44,6 @@ export const configuration = () => ({
   // Asynchronous Risk Assessment Worker & Queue configuration (BullMQ)
   // Configures retry backoff, exponential delays, and job deduplication keys.
   queue: {
-    riskQueueName: process.env.BULLMQ_RISK_QUEUE_NAME || 'risk-assessment-queue',
     attempts: parseInt(process.env.BULLMQ_RETRY_ATTEMPTS ?? '3', 10),
     backoffDelayMs: parseInt(process.env.BULLMQ_BACKOFF_DELAY_MS ?? '2000', 10),
   },
@@ -51,6 +54,8 @@ export const configuration = () => ({
     maxScore: parseInt(process.env.RISK_MAX_SCORE ?? '100', 10),
     autoPassThreshold: parseInt(process.env.RISK_PASS_THRESHOLD ?? '70', 10),
     simulatedLatencyMs: parseInt(process.env.RISK_SIMULATED_LATENCY_MS ?? '800', 10),
+    // Share of provider calls that fail with a transient error, to exercise retries (0..1).
+    transientFailureRate: parseFloat(process.env.RISK_TRANSIENT_FAILURE_RATE ?? '0'),
   },
 
   // Pagination & Operational defaults

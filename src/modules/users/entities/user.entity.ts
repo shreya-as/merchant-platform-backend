@@ -7,6 +7,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { ApiHideProperty } from '@nestjs/swagger';
 import { Role } from './role.entity';
 
 @Entity('users')
@@ -17,6 +18,7 @@ export class User {
   @Column({ unique: true, length: 255 })
   email: string;
 
+  @ApiHideProperty() // never part of any API response
   @Column({ length: 255, select: false })
   password_hash: string;
 

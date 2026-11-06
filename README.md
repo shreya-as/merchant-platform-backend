@@ -1,114 +1,163 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Merchant Platform Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS API for merchant onboarding: SALES create applications, a BullMQ worker runs an asynchronous
+(simulated) KYB / risk assessment, an ADMIN assigns a REVIEWER, and the reviewer approves, rejects
+or requests more information.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+- Stack: NestJS 12, TypeORM + PostgreSQL, BullMQ + Redis, JWT auth.
+- Requires Node.js **24.9+** (see `.nvmrc`) and pnpm.
+- More detail: [docs/APPLICATION_LIFECYCLE.md](docs/APPLICATION_LIFECYCLE.md), [docs/SECURITY.md](docs/SECURITY.md).
 
-## Description
+## Secrets
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+No secrets are committed, and none have defaults. Every credential comes from a gitignored file or
+from the shell:
 
-## Project setup
+| File (gitignored)            | Used by                          | Template                          |
+| ---------------------------- | -------------------------------- | --------------------------------- |
+| `.env` (project root)        | docker compose and e2e tests     | `.env.compose.example`            |
+| `src/config/env/.env.local`  | API running on the host          | `src/config/env/.env.example`     |
 
-```bash
-$ pnpm install
-```
+- `JWT_SECRET` is required everywhere and must be at least 32 characters, or the API refuses to start.
+- `DB_PASSWORD` has no default.
+- Demo users get `SEED_USER_PASSWORD`. If it isn't set, `pnpm seed` generates a random password and prints it once.
+- The seed refuses to run with `NODE_ENV=production` unless `ALLOW_DEMO_SEED=true`. In compose, both
+  follow `SEED_ON_START`, which defaults to `false`.
 
-## Compile and run the project
+## Run everything with Docker Compose
+
+Create the root `.env` once, with random secrets:
 
 ```bash
-# development
-$ pnpm run start
-
-# watch mode
-$ pnpm run start:dev
-
-# production mode
-$ pnpm run start:prod
+cp .env.compose.example .env
+sed -i "s|<jwt-secret>|$(openssl rand -base64 48)|; s|<db-password>|$(openssl rand -hex 16)|; s|<seed-password>|$(openssl rand -base64 12)|" .env
 ```
 
-## Run tests
+Then start the stack:
 
 ```bash
-# unit tests
-$ pnpm run test
-
-# e2e tests
-$ pnpm run test:e2e
-
-# test coverage
-$ pnpm run test:cov
+docker compose up -d --build
 ```
 
-## Deployment
+This starts Postgres, Redis and the API. On start, the API container runs the migrations. It also
+seeds demo data, because the template sets `SEED_ON_START=true` for local use. Compose refuses to
+start if `DB_PASSWORD` or `JWT_SECRET` is missing.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+| What            | URL / port                                  |
+| --------------- | ------------------------------------------- |
+| API             | http://localhost:3000/api/v1                |
+| Swagger UI      | http://localhost:3000/docs                  |
+| OpenAPI JSON    | http://localhost:3000/docs-json             |
+| Postgres (host) | `localhost:5433`, credentials from `.env`    |
+| Redis (host)    | `localhost:6380`                            |
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Host ports 5433 and 6380 are used so the stack does not clash with a local Postgres or Redis. You can
+change them, for example `POSTGRES_HOST_PORT=5432 REDIS_HOST_PORT=6379 API_HOST_PORT=3001 docker compose up -d`.
+
+Useful commands:
 
 ```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
+docker compose logs -f api        # follow API + worker logs
+docker compose down               # stop (data is kept in named volumes)
+docker compose down -v            # stop and delete all data
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### Seeded users (local development only)
 
-## Observability
+All demo users share the password set in `SEED_USER_PASSWORD` in your `.env`. Never enable
+seeding in a shared or production environment.
 
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
+| Email                          | Role     |
+| ------------------------------ | -------- |
+| admin@merchantplatform.com     | ADMIN    |
+| reviewer@merchantplatform.com  | REVIEWER |
+| sales@merchantplatform.com     | SALES    |
 
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
+## Try the API in Swagger
 
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
+1. Open http://localhost:3000/docs.
+2. Run `POST /api/v1/auth/login` with one of the seeded users and copy `accessToken` from the response.
+3. Click **Authorize**, paste the token, and call the other endpoints. The token is kept across page reloads.
 
-## Resources
+A typical flow:
 
-Check out a few resources that may come in handy when working with NestJS:
+1. As SALES, call `POST /merchant-applications` and then `POST /merchant-applications/{id}/submit`.
+2. Wait about a second for the risk worker. `GET /merchant-applications/{id}` now shows `UNDER_REVIEW`.
+3. As ADMIN, call `POST /merchant-applications/{id}/assign` with `{ "reviewerId": "b1eebc99-9c0b-4ef8-bb6d-6bb9bd380a22" }`.
+4. As REVIEWER, call `POST /merchant-applications/{id}/reviews` with `{ "decision": "APPROVE" }`.
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+## Run the API on your machine (infrastructure in Docker)
 
-## Support
+```bash
+nvm use                                  # Node 24
+pnpm install
+docker compose up -d postgres redis
+```
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+Then create `src/config/env/.env.local` from `src/config/env/.env.example`. Point it at the compose
+services (`DB_PORT=5433`, `REDIS_PORT=6380`, and `DB_USER` / `DB_PASSWORD` from your root `.env`).
+Fill in `JWT_SECRET` and `SEED_USER_PASSWORD`, then run:
 
-## Stay in touch
+```bash
+pnpm migration:run
+pnpm seed
+pnpm start:dev                           # http://localhost:3000/docs
+```
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+The env file is chosen by `NODE_ENV`: `src/config/env/.env.${NODE_ENV:-local}`. Variables that are
+already set in the shell always take precedence.
 
-## License
+## Tests
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+```bash
+pnpm test        # unit tests: no database or Redis needed
+pnpm test:cov    # unit tests with a coverage report
+pnpm test:e2e    # integration / API tests
+```
+
+### Unit tests (`src/**/*.spec.ts`)
+
+Every module has unit tests for its business rules:
+
+- **Merchant applications**: the state machine (every allowed and forbidden transition), ownership
+  scoping, editability per status, the one-open-application-per-business rule, submit/enqueue
+  ordering, the enqueue-failure fallback, requeue, reviewer assignment, PII masking, and DTO validation.
+- **Auth**: login and register, no user enumeration, `RolesGuard`, `JwtStrategy` (roles are loaded
+  from the database, not taken from the token), and route guard/role metadata.
+- **Reviews**: decisions and their resulting statuses, only the assigned reviewer may decide, no
+  decision before the risk review completes, no double decisions, and remarks are kept out of the audit log.
+- **Risk**: the processor (idempotency, stale jobs, retries, final failure), the simulated provider
+  (deterministic and threshold-based), and queue job ids.
+- **Audit and common**: redaction of secrets and PII, and the numeric transformer.
+
+### Integration / API tests (`test/*.e2e-spec.ts`)
+
+These boot the real `AppModule` against Postgres and Redis (with the BullMQ worker running in-process)
+and call it over HTTP with supertest. They need the compose infrastructure:
+
+```bash
+docker compose up -d postgres redis
+pnpm test:e2e
+```
+
+The tests use `src/config/env/.env.test`, which holds no secrets: database `merchant_platform_test`
+and Redis DB 1, so dev data is never touched. `DB_USER`, `DB_PASSWORD`, `JWT_SECRET` and
+`SEED_USER_PASSWORD` are read from the shell or from the root `.env`. A global setup creates the database if it is missing, rebuilds the schema
+from the migrations, seeds the users, and flushes the test Redis DB. As a safeguard, it refuses to run
+unless `NODE_ENV=test` and the database name ends in `_test`.
+
+| File                                | Covers                                                                                                                                                  |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth.e2e-spec.ts`                  | Login, uniform 401s, expired, garbage and non-Bearer tokens, `/auth/me`, ADMIN-only registration                                                       |
+| `application-lifecycle.e2e-spec.ts` | Full DRAFT → … → APPROVED flow including NEEDS_INFO and resubmission, the audit trail, REJECTED as a terminal state, invalid transitions, pagination and masking |
+| `risk-processing.e2e-spec.ts`       | Async assessment, idempotent redelivery, stale jobs, transient retry with backoff, FAILED after the last retry plus ADMIN requeue, decisions blocked while risk is in progress |
+| `authorization.e2e-spec.ts`         | 401 on every route; forged-secret, `alg: none` and deleted-user tokens; tampered role claims; spoofed headers; role matrix; cross-user (object-level) access; mass assignment |
+| `app.e2e-spec.ts`                   | API prefix and the Swagger / OpenAPI document                                                                                                           |
+
+## Database migrations
+
+```bash
+pnpm migration:generate src/database/migrations/<Name>
+pnpm migration:run
+pnpm migration:revert
+```

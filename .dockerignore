@@ -1,0 +1,11 @@
+node_modules
+dist
+coverage
+.git
+.vscode
+.idea
+*.log
+*.tsbuildinfo
+src/config/env/.env.*
+!src/config/env/.env.example
+test
