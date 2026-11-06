@@ -161,3 +161,17 @@ pnpm migration:generate src/database/migrations/<Name>
 pnpm migration:run
 pnpm migration:revert
 ```
+## AI Assistance & Disclosure
+
+AI coding assistants (Claude) were used during development for:
+
+- Troubleshooting implementation issues.
+- Code review and refactoring suggestions.
+- Identifying potential edge cases and improving code quality.
+
+**Verification:**
+
+- Reviewed AI-generated suggestions before implementation.
+- Manually verified the implemented functionality.
+- Tested API endpoints and database operations.
+- Reviewed the final implementation for correctness, maintainability, and consistency with project requirements.
